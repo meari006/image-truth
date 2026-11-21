@@ -30,7 +30,7 @@ h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0 0 12px;letter-spacin
 <button class="btn" id="apkClear">清空</button>
 </div>
 <div id="apkList" style="margin-top:12px"></div>
-<div class="privacy">LOCAL ONLY · ORIGINAL FILES ARE NOT MODIFIED · RENAMED COPIES ARE DOWNLOADED</section>\n<div class="summary"><h2>检测结果</h2><div class="count" id="count">0 FILES</div></div>
+<div class="privacy">LOCAL ONLY · ORIGINAL FILES ARE NOT MODIFIED · RENAMED COPIES ARE DOWNLOADED</div></section>\n<div class="summary"><h2>检测结果</h2><div class="count" id="count">0 FILES</div></div>
 <div id="results" class="results"><div class="empty">等待图片文件</div></div>
 <div class="bottom"><button class="btn" id="clear">清空列表</button><button class="btn primary" id="all" disabled>下载全部已识别文件</button></div>
 <div class="foot">IMAGE TRUTH / v1.0 · Signature-based detection · Offline in your browser</div>
@@ -49,8 +49,8 @@ const formats=[
 {name:'AVIF',ext:'.avif',test:b=>{const s=String.fromCharCode(...b.slice(4,16));return s.includes('ftyp')&&(s.includes('avif')||s.includes('avis'))}},
 {name:'HEIF',ext:'.heic',test:b=>{const s=String.fromCharCode(...b.slice(4,24));return s.includes('ftyp')&&/(heic|heix|hevc|hevx|mif1|msf1)/.test(s)}},
 {name:'JPEG 2000',ext:'.jp2',test:b=>b.length>=12&&b[0]===0&&b[1]===0&&b[2]===0&&b[3]===12&&String.fromCharCode(...b.slice(4,8))==='jP  '},
-{name:'JXL',ext:'.jxl',test:b=>b[0]===0xff&&b[1]===0x0a||String.fromCharCode(...b.slice(0,12))==='\u0000\u0000\u0000\u000cJXL \u000d\u0a87\u0a'},
-{name:'SVG',ext:'.svg',test:b=>{const s=new TextDecoder().decode(b.slice(0,400)).trimStart().toLowerCase();return s.startsWith('<svg')||s.startsWith('<?xml')&&s.includes('<svg')}},
+{name:'JXL',ext:'.jxl',test:b=>b.length>=12&&[0,0,0,12,74,88,76,32,13,10,135,10].every((v,i)=>b[i]===v)||b[0]===0xff&&b[1]===0x0a}
+{name:'SVG',ext:'.svg',test:b=>{const s=new TextDecoder().decode(b.slice(0,4096)).trimStart().toLowerCase();return s.startsWith('<svg')||s.startsWith('<?xml')&&s.includes('<svg')}},
 {name:'PSD',ext:'.psd',test:b=>String.fromCharCode(...b.slice(0,4))==='8BPS'}
 ];
 function detect(b){return formats.find(f=>{try{return f.test(b)}catch{return false}})||null}
@@ -69,7 +69,7 @@ drop.ondragover=e=>{e.preventDefault();drop.classList.add('hot')};drop.ondraglea
 // APK.1 suffix renamer (download renamed copy; source file is untouched)
 const apkInput=document.querySelector('#apkInput'),apkList=document.querySelector('#apkList'),apkAll=document.querySelector('#apkDownloadAll');
 let apkFiles=[];
-function renderApks(){apkAll.disabled=!apkFiles.length;apkList.innerHTML='';if(!apkFiles.length){apkList.innerHTML='<div class="empty">尚未选择文件</div>';return}apkFiles.forEach((f,i)=>{const row=document.createElement('div');row.className='apkrow';const info=document.createElement('div');const nm=document.createElement('div');nm.className='apkname';nm.textContent=f.name;const st=document.createElement('div');st.className='apkstatus';st.textContent=f.name.endsWith('.apk.1')?'✓ 将改为 '+f.name.slice(0,-2):'— 文件名不是以 .apk.1 结尾，保持原名';info.append(nm,st);const acts=document.createElement('div');acts.style.display='flex';acts.style.gap='8px';const dl=document.createElement('button');dl.className='btn small primary';dl.textContent='下载改名文件';dl.disabled=!f.name.endsWith('.apk.1');dl.onclick=()=>downloadApk(f);const rm=document.createElement('button');rm.className='btn small';rm.textContent='移除';rm.onclick=()=>{apkFiles.splice(i,1);renderApks()};acts.append(dl,rm);row.append(info,acts);apkList.append(row)})}
+function renderApks(){apkAll.disabled=!apkFiles.some(f=>f.name.endsWith('.apk.1'));apkList.innerHTML='';if(!apkFiles.length){apkList.innerHTML='<div class="empty">尚未选择文件</div>';return}apkFiles.forEach((f,i)=>{const row=document.createElement('div');row.className='apkrow';const info=document.createElement('div');const nm=document.createElement('div');nm.className='apkname';nm.textContent=f.name;const st=document.createElement('div');st.className='apkstatus';st.textContent=f.name.endsWith('.apk.1')?'✓ 将改为 '+f.name.slice(0,-2):'— 文件名不是以 .apk.1 结尾，保持原名';info.append(nm,st);const acts=document.createElement('div');acts.style.display='flex';acts.style.gap='8px';const dl=document.createElement('button');dl.className='btn small primary';dl.textContent='下载改名文件';dl.disabled=!f.name.endsWith('.apk.1');dl.onclick=()=>downloadApk(f);const rm=document.createElement('button');rm.className='btn small';rm.textContent='移除';rm.onclick=()=>{apkFiles.splice(i,1);renderApks()};acts.append(dl,rm);row.append(info,acts);apkList.append(row)})}
 function downloadApk(f){const outName=f.name.endsWith('.apk.1')?f.name.slice(0,-2):f.name;const url=URL.createObjectURL(f);const a=document.createElement('a');a.href=url;a.download=outName;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
 document.querySelector('#apkPick').onclick=()=>apkInput.click();apkInput.onchange=()=>{apkFiles=[...apkFiles,...apkInput.files];apkInput.value='';renderApks()};document.querySelector('#apkClear').onclick=()=>{apkFiles=[];renderApks()};apkAll.onclick=()=>apkFiles.filter(f=>f.name.endsWith('.apk.1')).forEach((f,i)=>setTimeout(()=>downloadApk(f),i*180));renderApks();
 </script></body></html>
