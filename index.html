@@ -16,7 +16,7 @@ h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0 0 12px;letter-spacin
 .apkrow{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid var(--line);padding:12px 0}.apkname{font-size:13px;overflow-wrap:anywhere}.apkstatus{font:12px monospace;color:var(--accent);margin-top:3px}@media(max-width:600px){.apkrow{align-items:flex-start;flex-direction:column}}</style>
 </head>
 <body><main>
-<header class="top"><div class="brand"><div class="logo">IMAGE <span>TRUTH</span></div><div class="version">v1.1.2</div></div><div class="topright"><div class="tag">CLIENT-SIDE · NO UPLOAD</div><div class="runtime" id="runtimeStatus">JS NOT STARTED</div></div></header>
+<header class="top"><div class="brand"><div class="logo">IMAGE <span>TRUTH</span></div><div class="version">v1.1.3</div></div><div class="topright"><div class="tag">CLIENT-SIDE · NO UPLOAD</div><div class="runtime" id="runtimeStatus">JS NOT STARTED</div></div></header>
 <h1>Trust the <em>bytes.</em><br>Not the filename.</h1>
 <p class="lead">识别图片文件的真实格式，纠正文件名和 MIME 类型；也可重新编码为兼容性更好的 PNG。所有操作均在本地浏览器进行。</p>
 <section id="drop" class="drop"><div class="glyph">⌁</div><strong>拖放图片到这里</strong><p>支持多文件 · 文件后缀不重要</p><label class="btn primary" id="pick" for="input">选择图片</label><input id="input" class="file-input" type="file" multiple><div class="filePreview" id="filePreview" hidden><img id="fileThumbnail" alt="已选择图片预览" hidden><div class="fileThumbPlaceholder" id="fileThumbPlaceholder">▧</div><div class="fileInfo"><strong id="fileName"></strong><span id="fileMeta"></span></div></div><div class="uploadStatus" id="uploadStatus" role="status" aria-live="polite">选择图片后，这里会显示识别结果和下一步操作提示。</div><div class="privacy">LOCAL PROCESSING ONLY — FILES NEVER LEAVE YOUR DEVICE</div></section>
@@ -68,48 +68,112 @@ async function addFiles(list){const incoming=[...list];if(!incoming.length)retur
 function render(){count.textContent=files.length+' FILE'+(files.length===1?'':'S');allBtn.disabled=!files.some(x=>x.fmt);if(!files.length){results.innerHTML='<div class="empty">等待图片文件</div>';return}results.innerHTML='';files.forEach((x,i)=>{const card=document.createElement('div');card.className='item';const preview=document.createElement('div');preview.className='preview';if(x.url){const img=document.createElement('img');img.src=x.url;img.alt='preview';preview.append(img)}else preview.textContent='▧';const info=document.createElement('div');const name=document.createElement('div');name.className='fname';name.textContent=x.file.name;const meta=document.createElement('div');meta.className='meta';meta.textContent=(x.fmt?x.fmt.name:'UNKNOWN')+' · '+humanSize(x.file.size)+' · '+x.dims;const state=document.createElement('div');state.className='state '+(!x.fmt?'unknown':expectedExt(x.file.name)!==x.fmt.ext?'mismatch':'');state.textContent=x.fmt?(expectedExt(x.file.name)===x.fmt.ext?'✓ 后缀匹配真实格式':'⚠ 后缀错误 → '+x.fmt.ext):'✕ 未识别文件签名';info.append(name,meta,state);const actions=document.createElement('div');actions.className='actions';if(x.fmt){const btn=document.createElement('button');btn.className='btn primary small';btn.textContent='下载正确格式';btn.onclick=()=>download(x);actions.append(btn)}const png=document.createElement('button');png.className='btn small';png.textContent='转换为 PNG';png.title='尝试由浏览器解码并重新编码为 PNG；无法解码时会显示原因';png.onclick=()=>downloadPng(x);actions.append(png);const rm=document.createElement('button');rm.className='btn small';rm.textContent='移除';rm.onclick=()=>{if(x.url)URL.revokeObjectURL(x.url);files.splice(i,1);if(files.length)showFilePreview(files[0]);else{filePreview.hidden=true;fileThumbnail.removeAttribute('src');fileThumbnail.hidden=true;fileThumbPlaceholder.hidden=false;fileName.textContent='';fileMeta.textContent='';setUploadStatus('列表已清空。选择图片后，这里会显示识别结果和下一步操作提示。')}render()};actions.append(rm);card.append(preview,info,actions);results.append(card)})}
 function saveBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
 function download(x){if(!x.fmt)return;const corrected=new Blob([x.file],{type:x.fmt.mime});saveBlob(corrected,safeName(x.file.name,x.fmt.ext))}
-async function decodeImageBlob(file,fmt){
-const candidates=[];
-if(file.type)candidates.push(new Blob([file],{type:file.type}));
-if(fmt?.mime)candidates.push(new Blob([file],{type:fmt.mime}));
-candidates.push(new Blob([file]));
-let lastError;
-for(const source of candidates){try{return await createImageBitmap(source)}catch(e){lastError=e}}
-throw lastError||new Error('当前浏览器无法解码此图片')
+function imageMimeCandidates(file,fmt){
+return [...new Set([fmt?.mime,file.type].filter(Boolean))];
 }
-function imageElementDecode(file,fmt){
-return new Promise((resolve,reject)=>{
-const source=fmt?new Blob([file],{type:fmt.mime}):file;
+async function decodeWithBitmap(file,types){
+let lastError;
+for(const type of [...types,'']){
+try{
+const source=type?new Blob([file],{type}):new Blob([file]);
+const bitmap=await createImageBitmap(source);
+return {image:bitmap,cleanup:()=>bitmap.close()};
+}catch(e){lastError=e}
+}
+throw lastError||new Error('createImageBitmap 解码失败');
+}
+async function decodeWithImageDecoder(file,types){
+if(typeof ImageDecoder!=='function')throw new Error('当前浏览器没有 ImageDecoder');
+const data=await file.arrayBuffer();
+let lastError;
+for(const type of types){
+let decoder;
+try{
+if(typeof ImageDecoder.isTypeSupported==='function'&&!(await ImageDecoder.isTypeSupported(type)))continue;
+decoder=new ImageDecoder({data:data.slice(0),type});
+const result=await decoder.decode({frameIndex:0});
+const frame=result.image;
+return {image:frame,cleanup:()=>{try{frame.close()}catch{}try{decoder.close()}catch{}}};
+}catch(e){lastError=e;try{decoder?.close()}catch{}}
+}
+throw lastError||new Error('ImageDecoder 不支持该图片格式');
+}
+async function decodeWithImageElement(file,types){
+const candidates=[...types,''];
+let lastError;
+for(const type of candidates){
+const source=type?new Blob([file],{type}):new Blob([file]);
 const url=URL.createObjectURL(source);
-const img=new Image();
-img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};
-img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('浏览器图片解码失败'))};
-img.src=url
-})
+try{
+const img=await new Promise((resolve,reject)=>{
+const node=new Image();
+node.onload=()=>resolve(node);
+node.onerror=()=>reject(new Error('Image 元素解码失败'));
+node.src=url;
+});
+return {image:img,cleanup:()=>URL.revokeObjectURL(url)};
+}catch(e){URL.revokeObjectURL(url);lastError=e}
+}
+throw lastError||new Error('浏览器图片解码失败');
+}
+async function decodeImageSource(file,fmt){
+const types=imageMimeCandidates(file,fmt);
+const decoders=[()=>decodeWithBitmap(file,types),()=>decodeWithImageDecoder(file,types),()=>decodeWithImageElement(file,types)];
+let lastError;
+for(const decode of decoders){try{return await decode()}catch(e){lastError=e}}
+throw new Error('原文件无法被当前浏览器解码（createImageBitmap、ImageDecoder 和 Image 均失败）'+(lastError?.message?'：'+lastError.message:''));
+}
+function canvasToPng(canvas){
+return new Promise((resolve,reject)=>{
+canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('浏览器未能生成 PNG')),'image/png');
+});
+}
+async function validatePng(blob){
+if(!blob||blob.type!=='image/png')throw new Error('PNG MIME 校验失败');
+const sig=new Uint8Array(await blob.slice(0,8).arrayBuffer());
+if(![137,80,78,71,13,10,26,10].every((v,i)=>sig[i]===v))throw new Error('生成文件的 PNG 签名校验失败');
+return blob;
+}
+async function decodeStandardPng(blob){
+return decodeImageSource(blob,{mime:'image/png'});
 }
 async function downloadPng(x){
-setUploadStatus('正在重新解码并生成 PNG：'+x.file.name+'…');
-let bmp=null,canvas=null;
+setUploadStatus('第 1/2 步：先将原图解码并生成标准中间图…');
+let source=null,intermediateImage=null;
 try{
-try{bmp=await decodeImageBlob(x.file,x.fmt)}catch(e){bmp=await imageElementDecode(x.file,x.fmt)}
-const w=bmp.width||bmp.naturalWidth,h=bmp.height||bmp.naturalHeight;
+source=await decodeImageSource(x.file,x.fmt);
+const w=source.image.displayWidth||source.image.codedWidth||source.image.naturalWidth||source.image.width;
+const h=source.image.displayHeight||source.image.codedHeight||source.image.naturalHeight||source.image.height;
 if(!w||!h)throw new Error('无法读取图片尺寸');
-canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
-const ctx=canvas.getContext('2d',{alpha:true});
-if(!ctx)throw new Error('无法创建 Canvas');
-ctx.drawImage(bmp,0,0,w,h);
-const png=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
-if(!png||png.type!=='image/png')throw new Error('浏览器未能输出 PNG');
-const sig=new Uint8Array(await png.slice(0,8).arrayBuffer());
-if(![137,80,78,71,13,10,26,10].every((v,i)=>sig[i]===v))throw new Error('生成文件的 PNG 签名校验失败');
+const normalCanvas=document.createElement('canvas');
+normalCanvas.width=w;normalCanvas.height=h;
+const normalCtx=normalCanvas.getContext('2d',{alpha:true});
+if(!normalCtx)throw new Error('无法创建中间图画布');
+normalCtx.drawImage(source.image,0,0,w,h);
+source.cleanup();source=null;
+const normalBlob=await canvasToPng(normalCanvas);
+await validatePng(normalBlob);
+normalCanvas.width=0;normalCanvas.height=0;
+
+setUploadStatus('第 2/2 步：标准中间图已生成，正在重新读取并输出 PNG…');
+intermediateImage=await decodeStandardPng(normalBlob);
+const finalCanvas=document.createElement('canvas');
+finalCanvas.width=w;finalCanvas.height=h;
+const finalCtx=finalCanvas.getContext('2d',{alpha:true});
+if(!finalCtx)throw new Error('无法创建最终 PNG 画布');
+finalCtx.drawImage(intermediateImage.image,0,0,w,h);
+intermediateImage.cleanup();intermediateImage=null;
+const png=await canvasToPng(finalCanvas);
+await validatePng(png);
+finalCanvas.width=0;finalCanvas.height=0;
 const out=safeName(x.file.name,'.png');
 saveBlob(png,out);
-setUploadStatus('转换成功 ✓ 已重新编码并验证 PNG：'+out+' · '+w+' × '+h+' · '+humanSize(png.size),'success')
+setUploadStatus('转换成功 ✓ 已先生成标准中间图，再重新编码并验证最终 PNG：'+out+' · '+w+' × '+h+' · '+humanSize(png.size),'success');
 }catch(e){
-setUploadStatus('PNG 转换失败：'+(e?.message||'解码/编码错误')+'。没有生成下载文件，原文件未改动。','error')
+setUploadStatus('PNG 转换失败：'+(e?.message||'解码/编码错误')+'。未生成下载文件，原文件未改动。若失败发生在第 1 步，说明当前浏览器仍无法解码原始格式。','error');
 }finally{
-if(bmp?.close)bmp.close();
-canvas=null
+try{source?.cleanup()}catch{}
+try{intermediateImage?.cleanup()}catch{}
 }
 }
 input.onchange=()=>{addFiles(input.files);input.value=''};
