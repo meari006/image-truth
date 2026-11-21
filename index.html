@@ -51,7 +51,7 @@ if(boxSize&&boxSize<16)return [];
 const end=boxSize?Math.min(boxSize,b.length):b.length;
 const out=[String.fromCharCode(...b.slice(8,12))];
 for(let i=16;i+4<=end;i+=4)out.push(String.fromCharCode(...b.slice(i,i+4)));
-return [...new Set(out.filter(x=>/^[\\x20-\\x7e]{4}$/.test(x)))];
+return [...new Set(out.filter(x=>x.length===4&&[...x].every(c=>{const n=c.charCodeAt(0);return n>=32&&n<=126})))];
 }
 function hasIsoBrand(b,accepted){const brands=isoBmffBrands(b);return accepted.some(x=>brands.includes(x))}
 const formats=[
