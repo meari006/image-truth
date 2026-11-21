@@ -13,14 +13,24 @@ h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0 0 12px;letter-spacin
 .drop{border:1px dashed #46515f;background:linear-gradient(135deg,#121a21,#11151a);border-radius:18px;padding:44px 20px;text-align:center;transition:.18s}.drop.hot{border-color:var(--accent);background:#18231b}.drop .glyph{font-size:35px;margin-bottom:12px}.drop strong{display:block;font-size:17px}.drop p{color:var(--muted);margin:6px 0 17px}.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:#202832;color:var(--text);border-radius:9px;padding:10px 15px;cursor:pointer;font:inherit}.btn.primary{background:var(--accent);border-color:var(--accent);color:#10150e;font-weight:800}.btn:hover{filter:brightness(1.12)}.privacy{font:11px monospace;color:#7f8d9a;margin-top:17px}
 .summary{display:flex;justify-content:space-between;align-items:center;margin:30px 0 12px;gap:12px}.summary h2{font-size:15px;margin:0}.count{font:12px monospace;color:var(--muted)}.results{display:grid;gap:10px}.item{display:grid;grid-template-columns:66px minmax(0,1fr) auto;gap:14px;align-items:center;padding:13px;background:var(--panel);border:1px solid var(--line);border-radius:13px}.preview{width:66px;height:66px;border-radius:9px;background:#0a0d10;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);font-size:22px}.preview img{width:100%;height:100%;object-fit:cover}.fname{font-size:14px;font-weight:650;overflow-wrap:anywhere}.meta{color:var(--muted);font:12px monospace;margin-top:4px;overflow-wrap:anywhere}.state{font:11px monospace;margin-top:5px;color:var(--accent)}.state.mismatch{color:var(--warn)}.state.unknown{color:var(--red)}.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.small{font-size:12px;padding:7px 10px}.empty{border:1px solid var(--line);border-radius:12px;padding:20px;color:var(--muted);text-align:center}.bottom{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:15px}.foot{color:var(--muted);font-size:12px;border-top:1px solid var(--line);margin-top:38px;padding-top:16px}
 @media(max-width:600px){main{padding:24px 14px}.top{margin-bottom:32px}.item{grid-template-columns:52px minmax(0,1fr)}.preview{width:52px;height:52px}.actions{grid-column:2;justify-content:flex-start}.drop{padding:34px 14px}}
-</style>
+.apkrow{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid var(--line);padding:12px 0}.apkname{font-size:13px;overflow-wrap:anywhere}.apkstatus{font:12px monospace;color:var(--accent);margin-top:3px}@media(max-width:600px){.apkrow{align-items:flex-start;flex-direction:column}}</style>
 </head>
 <body><main>
 <header class="top"><div class="logo">IMAGE <span>TRUTH</span></div><div class="tag">CLIENT-SIDE · NO UPLOAD</div></header>
 <h1>Trust the <em>bytes.</em><br>Not the filename.</h1>
 <p class="lead">识别图片文件的真实格式，忽略错误后缀。检测完成后，按真实格式下载修正后的文件名。所有操作均在本地浏览器进行。</p>
 <section id="drop" class="drop"><div class="glyph">⌁</div><strong>拖放图片到这里</strong><p>支持多文件 · 文件后缀不重要</p><button class="btn primary" id="pick">选择图片</button><input id="input" type="file" multiple hidden><div class="privacy">LOCAL PROCESSING ONLY — FILES NEVER LEAVE YOUR DEVICE</div></section>
-<div class="summary"><h2>检测结果</h2><div class="count" id="count">0 FILES</div></div>
+<section class="drop" id="apktool" style="margin-top:24px;text-align:left;padding:22px">
+<h2 style="margin:0 0 6px;font-size:18px">APK.1 RENAMER</h2>
+<p style="margin:0 0 14px;color:var(--muted)">批量将文件名末尾的 <code>.apk.1</code> 改为 <code>.apk</code>，不修改文件内容。</p>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<button class="btn" id="apkPick">选择 .apk.1 文件</button>
+<input id="apkInput" type="file" multiple hidden>
+<button class="btn primary" id="apkDownloadAll" disabled>下载全部修正文件</button>
+<button class="btn" id="apkClear">清空</button>
+</div>
+<div id="apkList" style="margin-top:12px"></div>
+<div class="privacy">LOCAL ONLY · ORIGINAL FILES ARE NOT MODIFIED · RENAMED COPIES ARE DOWNLOADED</section>\n<div class="summary"><h2>检测结果</h2><div class="count" id="count">0 FILES</div></div>
 <div id="results" class="results"><div class="empty">等待图片文件</div></div>
 <div class="bottom"><button class="btn" id="clear">清空列表</button><button class="btn primary" id="all" disabled>下载全部已识别文件</button></div>
 <div class="foot">IMAGE TRUTH / v1.0 · Signature-based detection · Offline in your browser</div>
@@ -55,4 +65,11 @@ document.querySelector('#pick').onclick=()=>input.click();input.onchange=()=>{ad
 document.querySelector('#clear').onclick=()=>{files.forEach(x=>x.url&&URL.revokeObjectURL(x.url));files=[];render()};
 allBtn.onclick=()=>files.filter(x=>x.fmt).forEach((x,i)=>setTimeout(()=>download(x),i*180));
 drop.ondragover=e=>{e.preventDefault();drop.classList.add('hot')};drop.ondragleave=()=>drop.classList.remove('hot');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('hot');addFiles(e.dataTransfer.files)};
+
+// APK.1 suffix renamer (download renamed copy; source file is untouched)
+const apkInput=document.querySelector('#apkInput'),apkList=document.querySelector('#apkList'),apkAll=document.querySelector('#apkDownloadAll');
+let apkFiles=[];
+function renderApks(){apkAll.disabled=!apkFiles.length;apkList.innerHTML='';if(!apkFiles.length){apkList.innerHTML='<div class="empty">尚未选择文件</div>';return}apkFiles.forEach((f,i)=>{const row=document.createElement('div');row.className='apkrow';const info=document.createElement('div');const nm=document.createElement('div');nm.className='apkname';nm.textContent=f.name;const st=document.createElement('div');st.className='apkstatus';st.textContent=f.name.endsWith('.apk.1')?'✓ 将改为 '+f.name.slice(0,-2):'— 文件名不是以 .apk.1 结尾，保持原名';info.append(nm,st);const acts=document.createElement('div');acts.style.display='flex';acts.style.gap='8px';const dl=document.createElement('button');dl.className='btn small primary';dl.textContent='下载改名文件';dl.disabled=!f.name.endsWith('.apk.1');dl.onclick=()=>downloadApk(f);const rm=document.createElement('button');rm.className='btn small';rm.textContent='移除';rm.onclick=()=>{apkFiles.splice(i,1);renderApks()};acts.append(dl,rm);row.append(info,acts);apkList.append(row)})}
+function downloadApk(f){const outName=f.name.endsWith('.apk.1')?f.name.slice(0,-2):f.name;const url=URL.createObjectURL(f);const a=document.createElement('a');a.href=url;a.download=outName;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+document.querySelector('#apkPick').onclick=()=>apkInput.click();apkInput.onchange=()=>{apkFiles=[...apkFiles,...apkInput.files];apkInput.value='';renderApks()};document.querySelector('#apkClear').onclick=()=>{apkFiles=[];renderApks()};apkAll.onclick=()=>apkFiles.filter(f=>f.name.endsWith('.apk.1')).forEach((f,i)=>setTimeout(()=>downloadApk(f),i*180));renderApks();
 </script></body></html>
