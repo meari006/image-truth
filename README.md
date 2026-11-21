@@ -1,6 +1,6 @@
 # IMAGE TRUTH
 
-**Version: v1.1.3**
+**Version: v1.1.4**
 
 A browser-based image format detector and repair tool. It checks file signatures instead of trusting filename extensions.
 
