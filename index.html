@@ -16,7 +16,7 @@ h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0 0 12px;letter-spacin
 .apkrow{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid var(--line);padding:12px 0}.apkname{font-size:13px;overflow-wrap:anywhere}.apkstatus{font:12px monospace;color:var(--accent);margin-top:3px}@media(max-width:600px){.apkrow{align-items:flex-start;flex-direction:column}}</style>
 </head>
 <body><main>
-<header class="top"><div class="brand"><div class="logo">IMAGE <span>TRUTH</span></div><div class="version">v1.1.4</div></div><div class="topright"><div class="tag">CLIENT-SIDE · NO UPLOAD</div><div class="runtime" id="runtimeStatus">JS NOT STARTED</div></div></header>
+<header class="top"><div class="brand"><div class="logo">IMAGE <span>TRUTH</span></div><div class="version">v1.1.5</div></div><div class="topright"><div class="tag">CLIENT-SIDE · NO UPLOAD</div><div class="runtime" id="runtimeStatus">JS NOT STARTED</div></div></header>
 <h1>Trust the <em>bytes.</em><br>Not the filename.</h1>
 <p class="lead">识别图片文件的真实格式，纠正文件名和 MIME 类型；也可重新编码为兼容性更好的 PNG。所有操作均在本地浏览器进行。</p>
 <section id="drop" class="drop"><div class="glyph">⌁</div><strong>拖放图片到这里</strong><p>支持多文件 · 文件后缀不重要</p><label class="btn primary" id="pick" for="input">选择图片</label><input id="input" class="file-input" type="file" multiple><div class="filePreview" id="filePreview" hidden><img id="fileThumbnail" alt="已选择图片预览" hidden><div class="fileThumbPlaceholder" id="fileThumbPlaceholder">▧</div><div class="fileInfo"><strong id="fileName"></strong><span id="fileMeta"></span></div></div><div class="uploadStatus" id="uploadStatus" role="status" aria-live="polite">选择图片后，这里会显示识别结果和下一步操作提示。</div><div class="privacy">LOCAL PROCESSING ONLY — FILES NEVER LEAVE YOUR DEVICE</div></section>
@@ -42,7 +42,7 @@ h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0 0 12px;letter-spacin
 const input=document.querySelector('#input'),drop=document.querySelector('#drop'),results=document.querySelector('#results'),count=document.querySelector('#count'),allBtn=document.querySelector('#all');
 const uploadStatus=document.querySelector('#uploadStatus'),filePreview=document.querySelector('#filePreview'),fileThumbnail=document.querySelector('#fileThumbnail'),fileThumbPlaceholder=document.querySelector('#fileThumbPlaceholder'),fileName=document.querySelector('#fileName'),fileMeta=document.querySelector('#fileMeta');
 function setUploadStatus(message,type=''){uploadStatus.textContent=message;uploadStatus.className='uploadStatus'+(type?' '+type:'')}
-function showFilePreview(item){filePreview.hidden=false;fileName.textContent=item.file.name;fileMeta.textContent=(item.fmt?item.fmt.name+' · '+item.fmt.mime+(item.fmt.brands?' · brands: '+item.fmt.brands:''):'格式未识别')+' · '+humanSize(item.file.size)+' · '+item.dims;if(item.url){fileThumbnail.src=item.url;fileThumbnail.hidden=false;fileThumbPlaceholder.hidden=true}else{fileThumbnail.removeAttribute('src');fileThumbnail.hidden=true;fileThumbPlaceholder.hidden=false}}
+function showFilePreview(item){filePreview.hidden=false;fileName.textContent=item.file.name;fileMeta.textContent=(item.fmt?item.fmt.name+' · '+item.fmt.mime+(item.fmt.brands?' · brands: '+item.fmt.brands:''):'格式未识别')+' · '+humanSize(item.file.size)+' · '+item.dims+(item.previewError?' · '+item.previewError:'');if(item.url){fileThumbnail.src=item.url;fileThumbnail.hidden=false;fileThumbPlaceholder.hidden=true}else{fileThumbnail.removeAttribute('src');fileThumbnail.hidden=true;fileThumbPlaceholder.hidden=false}}
 let files=[];
 function isoBmffBrands(b){
 if(b.length<16||String.fromCharCode(...b.slice(4,8))!=='ftyp')return [];
@@ -79,8 +79,41 @@ function humanSize(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFix
 function cleanBase(name){return name.replace(/\.[^.]+$/,'')}
 function expectedExt(name){return (name.match(/\.[^.]+$/)?.[0]||'').toLowerCase()}
 function safeName(name,ext){return cleanBase(name)+ext}
-async function addFiles(list){const incoming=[...list];if(!incoming.length)return;setUploadStatus('正在读取 '+incoming.length+' 个文件…');const firstIndex=files.length;for(const file of incoming){const b=new Uint8Array(await file.slice(0,4096).arrayBuffer());const fmt=detect(b);let dims='浏览器无法预览';let url='';const sources=fmt?[new Blob([file],{type:fmt.mime}),file]:[file];for(const source of sources){try{const bmp=await createImageBitmap(source);dims=bmp.width+' × '+bmp.height;bmp.close();url=URL.createObjectURL(source);break}catch{}}files.push({file,fmt,dims,url})}const first=files[firstIndex];if(first)showFilePreview(first);const added=files.slice(firstIndex);const recognized=added.filter(x=>x.fmt).length;const mismatch=added.filter(x=>x.fmt&&expectedExt(x.file.name)!==x.fmt.ext).length;const unknown=added.length-recognized;setUploadStatus('已载入 '+added.length+' 个文件：识别 '+recognized+' 个，后缀异常 '+mismatch+' 个，未识别 '+unknown+' 个。'+(mismatch?'对应文件可点「下载正确格式」；每个文件也可尝试「转换为 PNG」。':'每个文件都可以尝试转换为 PNG。所有处理均在本地完成，原文件不会被修改。'),unknown?'warning':'success');render()}
-function render(){count.textContent=files.length+' FILE'+(files.length===1?'':'S');allBtn.disabled=!files.some(x=>x.fmt);if(!files.length){results.innerHTML='<div class="empty">等待图片文件</div>';return}results.innerHTML='';files.forEach((x,i)=>{const card=document.createElement('div');card.className='item';const preview=document.createElement('div');preview.className='preview';if(x.url){const img=document.createElement('img');img.src=x.url;img.alt='preview';preview.append(img)}else preview.textContent='▧';const info=document.createElement('div');const name=document.createElement('div');name.className='fname';name.textContent=x.file.name;const meta=document.createElement('div');meta.className='meta';meta.textContent=(x.fmt?x.fmt.name+(x.fmt.brands?' ['+x.fmt.brands+']':''):'UNKNOWN')+' · '+humanSize(x.file.size)+' · '+x.dims;const state=document.createElement('div');state.className='state '+(!x.fmt?'unknown':expectedExt(x.file.name)!==x.fmt.ext?'mismatch':'');state.textContent=x.fmt?(expectedExt(x.file.name)===x.fmt.ext?'✓ 后缀匹配真实格式':'⚠ 后缀错误 → '+x.fmt.ext):'✕ 未识别文件签名';info.append(name,meta,state);const actions=document.createElement('div');actions.className='actions';if(x.fmt){const btn=document.createElement('button');btn.className='btn primary small';btn.textContent='下载正确格式';btn.onclick=()=>download(x);actions.append(btn)}const png=document.createElement('button');png.className='btn small';png.textContent='转换为 PNG';png.title='尝试由浏览器解码并重新编码为 PNG；无法解码时会显示原因';png.onclick=()=>downloadPng(x);actions.append(png);const rm=document.createElement('button');rm.className='btn small';rm.textContent='移除';rm.onclick=()=>{if(x.url)URL.revokeObjectURL(x.url);files.splice(i,1);if(files.length)showFilePreview(files[0]);else{filePreview.hidden=true;fileThumbnail.removeAttribute('src');fileThumbnail.hidden=true;fileThumbPlaceholder.hidden=false;fileName.textContent='';fileMeta.textContent='';setUploadStatus('列表已清空。选择图片后，这里会显示识别结果和下一步操作提示。')}render()};actions.append(rm);card.append(preview,info,actions);results.append(card)})}
+async function addFiles(list){
+const incoming=[...list];if(!incoming.length)return;
+setUploadStatus('正在读取 '+incoming.length+' 个文件…');
+const firstIndex=files.length;
+let heifPreviewCount=0,heifPreviewErrors=0;
+for(const file of incoming){
+const b=new Uint8Array(await file.slice(0,4096).arrayBuffer());
+const fmt=detect(b);let dims='浏览器无法预览';let url='';let previewError='';
+const sources=fmt?[new Blob([file],{type:fmt.mime}),file]:[file];
+for(const source of sources){
+try{const bmp=await createImageBitmap(source);dims=bmp.width+' × '+bmp.height;bmp.close();url=URL.createObjectURL(source);break}catch{}
+}
+if(!url&&isHeifFormat(fmt)){
+setUploadStatus('正在按需加载 HEIF 解码器并生成预览…');
+let decoded=null;
+try{
+decoded=await decodeHeifPixels(file);
+dims=decoded.width+' × '+decoded.height;
+url=await createHeifThumbnailUrl(decoded);
+if(!url)throw new Error('缩略图生成失败');
+heifPreviewCount++;
+}catch(e){dims='HEIF 预览失败';previewError=e?.message||'WASM 解码失败';heifPreviewErrors++}
+finally{if(decoded)decoded.data=null}
+}
+files.push({file,fmt,dims,url,previewError});
+}
+const first=files[firstIndex];if(first)showFilePreview(first);
+const added=files.slice(firstIndex);
+const recognized=added.filter(x=>x.fmt).length;
+const mismatch=added.filter(x=>x.fmt&&expectedExt(x.file.name)!==x.fmt.ext).length;
+const unknown=added.length-recognized;
+const heifNote=(heifPreviewCount?' HEIF/HEIC 已通过 WASM 生成预览 '+heifPreviewCount+' 个。':'')+(heifPreviewErrors?' HEIF/HEIC 预览失败 '+heifPreviewErrors+' 个；可查看文件详情中的原因。':'');
+setUploadStatus('已载入 '+added.length+' 个文件：识别 '+recognized+' 个，后缀异常 '+mismatch+' 个，未识别 '+unknown+' 个。'+heifNote+(mismatch?'对应文件可点「下载正确格式」；每个文件也可尝试「转换为 PNG」。':'每个文件都可以尝试转换为 PNG。所有处理均在本地完成，原文件不会被修改。'),(unknown||heifPreviewErrors)?'warning':'success');
+render();
+}function render(){count.textContent=files.length+' FILE'+(files.length===1?'':'S');allBtn.disabled=!files.some(x=>x.fmt);if(!files.length){results.innerHTML='<div class="empty">等待图片文件</div>';return}results.innerHTML='';files.forEach((x,i)=>{const card=document.createElement('div');card.className='item';const preview=document.createElement('div');preview.className='preview';if(x.url){const img=document.createElement('img');img.src=x.url;img.alt='preview';preview.append(img)}else preview.textContent='▧';const info=document.createElement('div');const name=document.createElement('div');name.className='fname';name.textContent=x.file.name;const meta=document.createElement('div');meta.className='meta';meta.textContent=(x.fmt?x.fmt.name+(x.fmt.brands?' ['+x.fmt.brands+']':''):'UNKNOWN')+' · '+humanSize(x.file.size)+' · '+x.dims+(x.previewError?' · '+x.previewError:'');const state=document.createElement('div');state.className='state '+(!x.fmt?'unknown':expectedExt(x.file.name)!==x.fmt.ext?'mismatch':'');state.textContent=x.fmt?(expectedExt(x.file.name)===x.fmt.ext?'✓ 后缀匹配真实格式':'⚠ 后缀错误 → '+x.fmt.ext):'✕ 未识别文件签名';info.append(name,meta,state);const actions=document.createElement('div');actions.className='actions';if(x.fmt){const btn=document.createElement('button');btn.className='btn primary small';btn.textContent='下载正确格式';btn.onclick=()=>download(x);actions.append(btn)}const png=document.createElement('button');png.className='btn small';png.textContent='转换为 PNG';png.title='先尝试浏览器原生解码；HEIC/HEIF 原生解码失败时使用按需加载的 WASM 解码器';png.onclick=()=>downloadPng(x);actions.append(png);const rm=document.createElement('button');rm.className='btn small';rm.textContent='移除';rm.onclick=()=>{if(x.url)URL.revokeObjectURL(x.url);files.splice(i,1);if(files.length)showFilePreview(files[0]);else{filePreview.hidden=true;fileThumbnail.removeAttribute('src');fileThumbnail.hidden=true;fileThumbPlaceholder.hidden=false;fileName.textContent='';fileMeta.textContent='';setUploadStatus('列表已清空。选择图片后，这里会显示识别结果和下一步操作提示。')}render()};actions.append(rm);card.append(preview,info,actions);results.append(card)})}
 function saveBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
 function download(x){if(!x.fmt)return;const corrected=new Blob([x.file],{type:x.fmt.mime});saveBlob(corrected,safeName(x.file.name,x.fmt.ext))}
 function imageMimeCandidates(file,fmt){
@@ -131,18 +164,87 @@ return {image:img,cleanup:()=>URL.revokeObjectURL(url)};
 }
 throw lastError||new Error('浏览器图片解码失败');
 }
+const HEIF_DECODER_URL='https://cdn.jsdelivr.net/npm/libheif-js@1.23.5/libheif-wasm/libheif-bundle.mjs';
+const MAX_HEIF_FILE_BYTES=100*1024*1024;
+const MAX_HEIF_PIXELS=24*1000*1000;
+let heifModulePromise=null;
+function isHeifFormat(fmt){return ['HEIC','HEIF','HEIC Sequence','HEIF Sequence'].includes(fmt?.name)}
+async function loadHeifDecoder(){
+if(!heifModulePromise){
+heifModulePromise=import(HEIF_DECODER_URL).then(async mod=>{
+const factory=mod.default||mod;
+const lib=typeof factory==='function'?await factory():factory;
+if(!lib||typeof lib.HeifDecoder!=='function')throw new Error('解码器模块接口不匹配');
+return lib;
+}).catch(error=>{heifModulePromise=null;throw new Error('无法加载 HEIF WASM 解码器，请检查网络或 CDN 连接：'+(error?.message||error))});
+}
+return heifModulePromise;
+}
+async function decodeHeifPixels(file){
+if(file.size>MAX_HEIF_FILE_BYTES)throw new Error('文件超过 100 MB，已停止处理以避免占用过多内存');
+const lib=await loadHeifDecoder();
+const decoder=new lib.HeifDecoder();
+let images=[];
+try{
+const bytes=await file.arrayBuffer();
+images=decoder.decode(bytes);
+if(!images||!images.length)throw new Error('libheif 无法识别或解码该 HEIF 文件');
+const image=images[0];
+const width=image.get_width(),height=image.get_height();
+if(!width||!height)throw new Error('无法读取 HEIF 图像尺寸');
+if(width*height>MAX_HEIF_PIXELS)throw new Error('图片超过 2400 万像素；为保护手机内存，当前版本暂不处理这么大的 HEIF 图片');
+const output={data:new Uint8ClampedArray(width*height*4),width,height};
+await new Promise((resolve,reject)=>{
+try{image.display(output,displayData=>displayData?resolve():reject(new Error('HEIF 像素解码失败')))}
+catch(error){reject(error)}
+});
+return output;
+}finally{
+for(const image of images){try{image.free?.()}catch{}}
+try{decoder.decoder?.delete?.()}catch{}
+}
+}
+async function createHeifThumbnailUrl(decoded){
+const {data,width,height}=decoded;
+const scale=Math.min(1,360/Math.max(width,height));
+const tw=Math.max(1,Math.round(width*scale)),th=Math.max(1,Math.round(height*scale));
+const thumbData=new Uint8ClampedArray(tw*th*4);
+for(let y=0;y<th;y++){
+const sy=Math.min(height-1,Math.floor(y*height/th));
+for(let x=0;x<tw;x++){
+const sx=Math.min(width-1,Math.floor(x*width/tw));
+const si=(sy*width+sx)*4,di=(y*tw+x)*4;
+thumbData[di]=data[si];thumbData[di+1]=data[si+1];thumbData[di+2]=data[si+2];thumbData[di+3]=data[si+3];
+}
+}
+const canvas=document.createElement('canvas');canvas.width=tw;canvas.height=th;
+try{
+const ctx=canvas.getContext('2d');if(!ctx)throw new Error('无法创建缩略图画布');
+const imageData=ctx.createImageData(tw,th);imageData.data.set(thumbData);ctx.putImageData(imageData,0,0);
+let blob=await canvasToBlob(canvas,'image/webp',0.82);
+if(!blob)blob=await canvasToBlob(canvas,'image/png');
+if(!blob)throw new Error('浏览器无法生成预览缩略图');
+return URL.createObjectURL(blob);
+}finally{canvas.width=0;canvas.height=0}
+}
 async function decodeImageSource(file,fmt){
 const types=imageMimeCandidates(file,fmt);
 const decoders=[()=>decodeWithBitmap(file,types),()=>decodeWithImageDecoder(file,types),()=>decodeWithImageElement(file,types)];
 let lastError;
 for(const decode of decoders){try{return await decode()}catch(e){lastError=e}}
+if(isHeifFormat(fmt)){
+let decoded;
+try{
+decoded=await decodeHeifPixels(file);
+const result={rgba:decoded.data,width:decoded.width,height:decoded.height,cleanup(){result.rgba=null;decoded.data=null}};
+return result;
+}catch(e){throw new Error('浏览器原生解码失败，HEIF WASM 后备解码也未成功：'+(e?.message||e))}
+}
 throw new Error('原文件无法被当前浏览器解码（createImageBitmap、ImageDecoder 和 Image 均失败）'+(lastError?.message?'：'+lastError.message:''));
 }
-function canvasToPng(canvas){
-return new Promise((resolve,reject)=>{
-canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('浏览器未能生成 PNG')),'image/png');
-});
-}
+function decodeStandardPng(blob){return decodeImageSource(blob,{mime:'image/png'})}
+function canvasToBlob(canvas,type,quality){return new Promise((resolve,reject)=>{try{canvas.toBlob(blob=>resolve(blob),type,quality)}catch(error){reject(error)}})}
+async function canvasToPng(canvas){const blob=await canvasToBlob(canvas,'image/png');if(!blob)throw new Error('浏览器未能生成 PNG');return blob;}
 async function validatePng(blob){
 if(!blob||blob.type!=='image/png')throw new Error('PNG MIME 校验失败');
 const sig=new Uint8Array(await blob.slice(0,8).arrayBuffer());
@@ -153,42 +255,35 @@ async function decodeStandardPng(blob){
 return decodeImageSource(blob,{mime:'image/png'});
 }
 async function downloadPng(x){
-setUploadStatus('第 1/2 步：先将原图解码并生成标准中间图…');
-let source=null,intermediateImage=null;
+setUploadStatus(isHeifFormat(x.fmt)?'正在解码 HEIC/HEIF；浏览器不支持时会按需加载 WASM…':'正在解码原图并生成 PNG…');
+let source=null,canvas=null,imageData=null;
 try{
 source=await decodeImageSource(x.file,x.fmt);
-const w=source.image.displayWidth||source.image.codedWidth||source.image.naturalWidth||source.image.width;
-const h=source.image.displayHeight||source.image.codedHeight||source.image.naturalHeight||source.image.height;
+const w=source.width||source.image?.displayWidth||source.image?.codedWidth||source.image?.naturalWidth||source.image?.width;
+const h=source.height||source.image?.displayHeight||source.image?.codedHeight||source.image?.naturalHeight||source.image?.height;
 if(!w||!h)throw new Error('无法读取图片尺寸');
-const normalCanvas=document.createElement('canvas');
-normalCanvas.width=w;normalCanvas.height=h;
-const normalCtx=normalCanvas.getContext('2d',{alpha:true});
-if(!normalCtx)throw new Error('无法创建中间图画布');
-normalCtx.drawImage(source.image,0,0,w,h);
-source.cleanup();source=null;
-const normalBlob=await canvasToPng(normalCanvas);
-await validatePng(normalBlob);
-normalCanvas.width=0;normalCanvas.height=0;
-
-setUploadStatus('第 2/2 步：标准中间图已生成，正在重新读取并输出 PNG…');
-intermediateImage=await decodeStandardPng(normalBlob);
-const finalCanvas=document.createElement('canvas');
-finalCanvas.width=w;finalCanvas.height=h;
-const finalCtx=finalCanvas.getContext('2d',{alpha:true});
-if(!finalCtx)throw new Error('无法创建最终 PNG 画布');
-finalCtx.drawImage(intermediateImage.image,0,0,w,h);
-intermediateImage.cleanup();intermediateImage=null;
-const png=await canvasToPng(finalCanvas);
+canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+const ctx=canvas.getContext('2d',{alpha:true});
+if(!ctx)throw new Error('无法创建 PNG 画布');
+if(source.rgba){
+try{imageData=new ImageData(source.rgba,w,h)}
+catch{imageData=ctx.createImageData(w,h);imageData.data.set(source.rgba)}
+ctx.putImageData(imageData,0,0);
+}else{
+ctx.drawImage(source.image,0,0,w,h);
+}
+source.cleanup();source=null;imageData=null;
+const png=await canvasToPng(canvas);
 await validatePng(png);
-finalCanvas.width=0;finalCanvas.height=0;
 const out=safeName(x.file.name,'.png');
 saveBlob(png,out);
-setUploadStatus('转换成功 ✓ 已先生成标准中间图，再重新编码并验证最终 PNG：'+out+' · '+w+' × '+h+' · '+humanSize(png.size),'success');
+setUploadStatus('转换成功 ✓ '+out+' · '+w+' × '+h+' · '+humanSize(png.size)+'。PNG 只保留解码后的像素，不复制原图 EXIF 等元数据。','success');
 }catch(e){
-setUploadStatus('PNG 转换失败：'+(e?.message||'解码/编码错误')+'。未生成下载文件，原文件未改动。若失败发生在第 1 步，说明当前浏览器仍无法解码原始格式。','error');
+setUploadStatus('PNG 转换失败：'+(e?.message||'解码/编码错误')+'。未生成下载文件，原文件未改动。','error');
 }finally{
 try{source?.cleanup()}catch{}
-try{intermediateImage?.cleanup()}catch{}
+source=null;imageData=null;
+if(canvas){canvas.width=0;canvas.height=0}
 }
 }
 input.onchange=()=>{addFiles(input.files);input.value=''};
