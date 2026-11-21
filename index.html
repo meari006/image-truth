@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0e12">
+<title>IMAGE TRUTH — Real Format Detector</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0e12;--panel:#12171e;--line:#29313b;--text:#e8edf2;--muted:#84909e;--accent:#9ce86a;--warn:#ffbf69;--red:#ff7272}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0%,#18232a 0,transparent 38%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+main{max-width:980px;margin:auto;padding:38px 22px 60px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:45px}.logo{font-size:13px;letter-spacing:.22em;font-weight:800}.logo span{color:var(--accent)}.tag{font:11px monospace;color:var(--muted);border:1px solid var(--line);padding:6px 9px;border-radius:20px}
+h1{font-size:clamp(30px,5vw,48px);line-height:1.05;margin:0 0 12px;letter-spacing:-.04em}h1 em{font-style:normal;color:var(--accent)}.lead{color:var(--muted);max-width:580px;margin:0 0 27px}
+.drop{border:1px dashed #46515f;background:linear-gradient(135deg,#121a21,#11151a);border-radius:18px;padding:44px 20px;text-align:center;transition:.18s}.drop.hot{border-color:var(--accent);background:#18231b}.drop .glyph{font-size:35px;margin-bottom:12px}.drop strong{display:block;font-size:17px}.drop p{color:var(--muted);margin:6px 0 17px}.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:#202832;color:var(--text);border-radius:9px;padding:10px 15px;cursor:pointer;font:inherit}.btn.primary{background:var(--accent);border-color:var(--accent);color:#10150e;font-weight:800}.btn:hover{filter:brightness(1.12)}.privacy{font:11px monospace;color:#7f8d9a;margin-top:17px}
+.summary{display:flex;justify-content:space-between;align-items:center;margin:30px 0 12px;gap:12px}.summary h2{font-size:15px;margin:0}.count{font:12px monospace;color:var(--muted)}.results{display:grid;gap:10px}.item{display:grid;grid-template-columns:66px minmax(0,1fr) auto;gap:14px;align-items:center;padding:13px;background:var(--panel);border:1px solid var(--line);border-radius:13px}.preview{width:66px;height:66px;border-radius:9px;background:#0a0d10;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);font-size:22px}.preview img{width:100%;height:100%;object-fit:cover}.fname{font-size:14px;font-weight:650;overflow-wrap:anywhere}.meta{color:var(--muted);font:12px monospace;margin-top:4px;overflow-wrap:anywhere}.state{font:11px monospace;margin-top:5px;color:var(--accent)}.state.mismatch{color:var(--warn)}.state.unknown{color:var(--red)}.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.small{font-size:12px;padding:7px 10px}.empty{border:1px solid var(--line);border-radius:12px;padding:20px;color:var(--muted);text-align:center}.bottom{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:15px}.foot{color:var(--muted);font-size:12px;border-top:1px solid var(--line);margin-top:38px;padding-top:16px}
+@media(max-width:600px){main{padding:24px 14px}.top{margin-bottom:32px}.item{grid-template-columns:52px minmax(0,1fr)}.preview{width:52px;height:52px}.actions{grid-column:2;justify-content:flex-start}.drop{padding:34px 14px}}
+</style>
+</head>
+<body><main>
+<header class="top"><div class="logo">IMAGE <span>TRUTH</span></div><div class="tag">CLIENT-SIDE · NO UPLOAD</div></header>
+<h1>Trust the <em>bytes.</em><br>Not the filename.</h1>
+<p class="lead">识别图片文件的真实格式，忽略错误后缀。检测完成后，按真实格式下载修正后的文件名。所有操作均在本地浏览器进行。</p>
+<section id="drop" class="drop"><div class="glyph">⌁</div><strong>拖放图片到这里</strong><p>支持多文件 · 文件后缀不重要</p><button class="btn primary" id="pick">选择图片</button><input id="input" type="file" multiple hidden><div class="privacy">LOCAL PROCESSING ONLY — FILES NEVER LEAVE YOUR DEVICE</div></section>
+<div class="summary"><h2>检测结果</h2><div class="count" id="count">0 FILES</div></div>
+<div id="results" class="results"><div class="empty">等待图片文件</div></div>
+<div class="bottom"><button class="btn" id="clear">清空列表</button><button class="btn primary" id="all" disabled>下载全部已识别文件</button></div>
+<div class="foot">IMAGE TRUTH / v1.0 · Signature-based detection · Offline in your browser</div>
+</main>
+<script>
+const input=document.querySelector('#input'),drop=document.querySelector('#drop'),results=document.querySelector('#results'),count=document.querySelector('#count'),allBtn=document.querySelector('#all');
+let files=[];
+const formats=[
+{name:'JPEG',ext:'.jpg',test:b=>b[0]===0xff&&b[1]===0xd8&&b[2]===0xff},
+{name:'PNG',ext:'.png',test:b=>b.length>=8&&[137,80,78,71,13,10,26,10].every((v,i)=>b[i]===v)},
+{name:'GIF',ext:'.gif',test:b=>String.fromCharCode(...b.slice(0,6))==='GIF87a'||String.fromCharCode(...b.slice(0,6))==='GIF89a'},
+{name:'WEBP',ext:'.webp',test:b=>String.fromCharCode(...b.slice(0,4))==='RIFF'&&String.fromCharCode(...b.slice(8,12))==='WEBP'},
+{name:'BMP',ext:'.bmp',test:b=>b[0]===0x42&&b[1]===0x4d},
+{name:'TIFF',ext:'.tif',test:b=>(b[0]===0x49&&b[1]===0x49&&b[2]===0x2a&&b[3]===0)||(b[0]===0x4d&&b[1]===0x4d&&b[2]===0&&b[3]===0x2a)},
+{name:'ICO',ext:'.ico',test:b=>b[0]===0&&b[1]===0&&b[2]===1&&b[3]===0},
+{name:'AVIF',ext:'.avif',test:b=>{const s=String.fromCharCode(...b.slice(4,16));return s.includes('ftyp')&&(s.includes('avif')||s.includes('avis'))}},
+{name:'HEIF',ext:'.heic',test:b=>{const s=String.fromCharCode(...b.slice(4,24));return s.includes('ftyp')&&/(heic|heix|hevc|hevx|mif1|msf1)/.test(s)}},
+{name:'JPEG 2000',ext:'.jp2',test:b=>b.length>=12&&b[0]===0&&b[1]===0&&b[2]===0&&b[3]===12&&String.fromCharCode(...b.slice(4,8))==='jP  '},
+{name:'JXL',ext:'.jxl',test:b=>b[0]===0xff&&b[1]===0x0a||String.fromCharCode(...b.slice(0,12))==='\u0000\u0000\u0000\u000cJXL \u000d\u0a87\u0a'},
+{name:'SVG',ext:'.svg',test:b=>{const s=new TextDecoder().decode(b.slice(0,400)).trimStart().toLowerCase();return s.startsWith('<svg')||s.startsWith('<?xml')&&s.includes('<svg')}},
+{name:'PSD',ext:'.psd',test:b=>String.fromCharCode(...b.slice(0,4))==='8BPS'}
+];
+function detect(b){return formats.find(f=>{try{return f.test(b)}catch{return false}})||null}
+function humanSize(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1)+' KB';return (n/1048576).toFixed(2)+' MB'}
+function cleanBase(name){return name.replace(/\.[^.]+$/,'')}
+function expectedExt(name){return (name.match(/\.[^.]+$/)?.[0]||'').toLowerCase()}
+function safeName(name,ext){return cleanBase(name)+ext}
+async function addFiles(list){for(const file of list){const b=new Uint8Array(await file.slice(0,64).arrayBuffer());const fmt=detect(b);let dims='尺寸读取中…';let url='';try{const bmp=await createImageBitmap(file);dims=bmp.width+' × '+bmp.height;bmp.close();url=URL.createObjectURL(file)}catch{dims='尺寸无法解码（格式签名仍可识别）'}files.push({file,fmt,dims,url})}render()}
+function render(){count.textContent=files.length+' FILE'+(files.length===1?'':'S');allBtn.disabled=!files.some(x=>x.fmt);if(!files.length){results.innerHTML='<div class="empty">等待图片文件</div>';return}results.innerHTML='';files.forEach((x,i)=>{const card=document.createElement('div');card.className='item';const preview=document.createElement('div');preview.className='preview';if(x.url){const img=document.createElement('img');img.src=x.url;img.alt='preview';preview.append(img)}else preview.textContent='▧';const info=document.createElement('div');const name=document.createElement('div');name.className='fname';name.textContent=x.file.name;const meta=document.createElement('div');meta.className='meta';meta.textContent=(x.fmt?x.fmt.name:'UNKNOWN')+' · '+humanSize(x.file.size)+' · '+x.dims;const state=document.createElement('div');state.className='state '+(!x.fmt?'unknown':expectedExt(x.file.name)!==x.fmt.ext?'mismatch':'');state.textContent=x.fmt?(expectedExt(x.file.name)===x.fmt.ext?'✓ 后缀匹配真实格式':'⚠ 后缀错误 → '+x.fmt.ext):'✕ 未识别文件签名';info.append(name,meta,state);const actions=document.createElement('div');actions.className='actions';if(x.fmt){const btn=document.createElement('button');btn.className='btn primary small';btn.textContent='下载修正文件';btn.onclick=()=>download(x);actions.append(btn)}const rm=document.createElement('button');rm.className='btn small';rm.textContent='移除';rm.onclick=()=>{if(x.url)URL.revokeObjectURL(x.url);files.splice(i,1);render()};actions.append(rm);card.append(preview,info,actions);results.append(card)})}
+function download(x){if(!x.fmt)return;const url=URL.createObjectURL(x.file);const a=document.createElement('a');a.href=url;a.download=safeName(x.file.name,x.fmt.ext);document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+document.querySelector('#pick').onclick=()=>input.click();input.onchange=()=>{addFiles(input.files);input.value=''};
+document.querySelector('#clear').onclick=()=>{files.forEach(x=>x.url&&URL.revokeObjectURL(x.url));files=[];render()};
+allBtn.onclick=()=>files.filter(x=>x.fmt).forEach((x,i)=>setTimeout(()=>download(x),i*180));
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('hot')};drop.ondragleave=()=>drop.classList.remove('hot');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('hot');addFiles(e.dataTransfer.files)};
+</script></body></html>
